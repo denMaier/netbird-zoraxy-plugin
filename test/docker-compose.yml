@@ -1,0 +1,21 @@
+# A real, throwaway NetBird server for `make e2e`.
+services:
+  server:
+    image: netbirdio/netbird-server:0.82.0@sha256:7b5b53b2dc8bc25639f791cf72d47cf86911894ff3f8a97cb79bab9be958109c
+    volumes:
+      - ./server-config.yaml:/etc/netbird/config.yaml:ro
+      - server-data:/var/lib/netbird
+    command: ["--config", "/etc/netbird/config.yaml"]
+    hostname: netbird-server
+    networks: { default: { aliases: [netbird-server] } }
+    ports: ["127.0.0.1:${NETBIRD_E2E_PORT:-18080}:80"]
+
+  setup:
+    image: alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
+    depends_on: [server]
+    volumes: ["./setup.sh:/setup.sh:ro"]
+    command: ["sh", "/setup.sh"]
+    profiles: [setup]
+
+volumes:
+  server-data:

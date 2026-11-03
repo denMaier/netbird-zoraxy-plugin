@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="csrf-token" content="{{.CSRF}}">
+<meta name="zoraxy-csrf-token" content="{{.HostCSRF}}">
+<title>NetBird Route Sync</title>
+<style nonce="{{.CSRF}}">
+:root { color-scheme: light dark; --bg: #f5f7fa; --card: #fff; --text: #18262f; --muted: #526371; --line: #d9e1e7; --accent: #075b55; --soft: #edf6f3; --error: #a92a32; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #131a20; --card: #1c262e; --text: #edf4f7; --muted: #a8bbc8; --line: #394954; --accent: #7cddd0; --soft: #233a38; --error: #ff9aa2; }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, sans-serif; }
+main { max-width: 1020px; margin: auto; padding: 32px 24px 64px; }
+header { margin-bottom: 24px; }
+h1 { font-size: 26px; margin: 0 0 4px; }
+h2 { font-size: 19px; margin: 0 0 18px; }
+p { margin: 8px 0; color: var(--muted); }
+small { display: block; color: var(--muted); font-size: 12px; font-weight: 400; margin-top: 5px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 24px; margin-bottom: 18px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 24px; }
+.full { grid-column: 1 / -1; }
+label, .label { display: block; font-weight: 600; font-size: 14px; }
+input, select { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 7px; padding: 10px 12px; font: inherit; margin-top: 5px; }
+input[type=checkbox] { width: auto; margin: 0 9px 0 0; }
+.checks { display: flex; gap: 8px 24px; flex-wrap: wrap; margin-top: 5px; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+button { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 8px; padding: 10px 16px; font: 600 14px system-ui; cursor: pointer; }
+button.primary { background: var(--accent); color: var(--card); border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: wait; }
+.note { border-left: 3px solid var(--accent); padding: 10px 15px; background: var(--soft); color: var(--muted); font-size: 13px; margin: 18px 0 0; }
+.badge { display: inline-block; color: var(--accent); background: var(--soft); border-radius: 30px; padding: 4px 10px; font-size: 12px; font-weight: 700; }
+.error { color: var(--error); }
+#message { min-height: 24px; margin: 12px 0; }
+.summary { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 14px; }
+th, td { text-align: left; padding: 11px 8px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-size: 12px; }
+details { margin-top: 18px; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+@media (max-width: 650px) {
+  main { padding: 20px 14px; }
+  .card { padding: 18px; }
+  .grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body><main>
+<header>
+  <h1>NetBird Route Sync</h1>
+  <p>Tag a reverse-proxy route to make its hostname and aliases available through NetBird.</p>
+</header>
+
+<!-- Plain buttons, not a form: Zoraxy's iframe sandbox lacks allow-forms, so submit never fires. -->
+<div id="settings">
+  <section class="card">
+    <h2>Connect to NetBird</h2>
+    <div class="grid">
+      <label>Management API URL
+        <input id="netbird_url" type="url" placeholder="https://api.netbird.io">
+        <small>Cloud or your self-hosted HTTPS API origin. A trailing /api is accepted.</small>
+      </label>
+      <label>Personal access token
+        <input id="token" type="password" autocomplete="new-password" placeholder="nbp_…">
+        <small id="token_note">Enter a token with access to Networks and Groups. DNS access is needed only for private DNS.</small>
+      </label>
+      <div class="full">
+        <button id="catalog" type="button">Load Networks, groups &amp; DNS zones</button>
+        <small>Uses these credentials without saving. Choose an existing Network with its routing peer already configured.</small>
+      </div>
+      <label>Network
+        <select id="network_id"></select>
+      </label>
+      <div>
+        <div class="label">Resource groups</div>
+        <div id="group_ids" class="checks"></div>
+        <small>New resources join these groups. Configure an access policy for the intended client groups and Zoraxy's ports in NetBird.</small>
+      </div>
+    </div>
+    <div class="note">Keep Zoraxy's authentication enabled. NetBird access to one IP and port also reaches other Zoraxy sites on that same listener; separate domain resources do not isolate those sites.</div>
+  </section>
+
+  <section class="card">
+    <h2>Choose what to publish</h2>
+    <div class="grid">
+      <label>Publish tag
+        <input id="tag" value="netbird">
+        <small>Exact, case-sensitive tag match. Disabled routes are excluded; hostname aliases are included.</small>
+      </label>
+      <label>Sync mode
+        <select id="mode">
+          <option value="once">One time — sync once, then delete the token</option>
+          <option value="continuous">Continuous — keep the token and keep syncing</option>
+        </select>
+        <small id="mode_note"></small>
+      </label>
+      <label id="storage">Keep the token
+        <select id="token_storage">
+          <option value="memory">In memory only — re-enter it after every restart</option>
+          <option value="file">In a plain-text file — survives restarts, ends up in backups</option>
+        </select>
+        <small id="storage_note"></small>
+      </label>
+      <label id="interval">Check every (seconds)
+        <input id="interval_seconds" type="number" min="30" max="86400" value="60">
+      </label>
+      <div class="full checks">
+        <label><input id="dry_run" type="checkbox" checked>Dry run — preview changes without writing</label>
+      </div>
+    </div>
+    <div class="note">Removing the tag or disabling a route removes this plugin's resource and private DNS record on the next live sync. Existing entries created elsewhere are never adopted.</div>
+  </section>
+
+  <section class="card">
+    <h2>Private DNS <span class="badge">Optional</span></h2>
+    <div class="grid">
+      <label>DNS zone
+        <select id="dns_zone_id"></select>
+        <small>An existing enabled zone containing all published hostnames. DNS records use a 300-second TTL.</small>
+      </label>
+      <label>Zoraxy address
+        <input id="dns_target" autocomplete="off" placeholder="192.168.1.10 or zoraxy.netbird.cloud">
+        <small>An IP creates an A/AAAA record. A hostname creates a CNAME. Use the address of Zoraxy, not an upstream server.</small>
+      </label>
+    </div>
+    <p><small>Distribute the zone to the client groups and, for routed domains, the routing peer's group. If Zoraxy runs on the NetBird peer itself, also configure a peer access policy. Private DNS supports exact hostnames in one zone.</small></p>
+  </section>
+
+  <div class="actions">
+    <button id="save" class="primary" type="button">Save settings</button>
+    <button id="preview" type="button">Preview saved settings</button>
+    <button id="sync" type="button">Sync saved settings now</button>
+  </div>
+</div>
+<p id="message" role="status" aria-live="polite"></p>
+<p id="paused" class="error" role="alert" hidden>Continuous sync is paused because the token is not loaded. Enter it above and save to resume.</p>
+
+<section class="card">
+  <div class="summary"><h2>Latest sync</h2><span id="result_mode" class="badge">No sync yet</span></div>
+  <p id="summary">Save your settings, then preview the tagged routes.</p>
+  <p id="sync_error" class="error" role="alert"></p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Action</th><th>Entry</th><th>Hostname</th></tr></thead>
+      <tbody id="changes"></tbody>
+    </table>
+  </div>
+  <details><summary>Sync details</summary><pre id="details">No result yet.</pre></details>
+</section>
+</main>
+<script nonce="{{.CSRF}}">
+'use strict';
+const $ = id => document.getElementById(id);
+const csrf = document.querySelector('meta[name="csrf-token"]').content;
+const hostCSRF = document.querySelector('meta[name="zoraxy-csrf-token"]').content;
+const fields = ['netbird_url', 'network_id', 'tag', 'mode', 'token_storage', 'interval_seconds', 'dry_run', 'dns_zone_id', 'dns_target'];
+const noToken = 'Enter a token with access to Networks and Groups. DNS access is needed only for private DNS.';
+const modeNotes = {
+  once: 'The token is never written to disk and is removed from memory after a live sync. Published entries stay. Later route changes reach NetBird only if you sync again with a token. The token stays valid in NetBird until you revoke it there or it expires.',
+  continuous: 'Route changes reach NetBird at the interval below.',
+};
+const storageNotes = {
+  memory: 'Never written to disk. Sync pauses after a plugin, Zoraxy or container restart until you enter the token here again. Published entries stay.',
+  file: 'Sync resumes by itself after a restart. The token is unencrypted in data/settings.json, so backups and snapshots of that folder contain it.',
+};
+let busy = false;
+let dirty = false;
+
+function settings() {
+  const c = {};
+  fields.forEach(id => { const el = $(id); c[id] = el.type === 'checkbox' ? el.checked : el.value.trim(); });
+  c.interval_seconds = Number(c.interval_seconds);
+  c.group_ids = selectedGroups();
+  c.token = $('token').value.trim();
+  return c;
+}
+
+function selectedGroups() {
+  return [...$('group_ids').querySelectorAll('input:checked')].map(box => box.value);
+}
+
+function message(text, error = false) {
+  $('message').textContent = text;
+  $('message').className = error ? 'error' : '';
+}
+
+async function api(path, body) {
+  const headers = {'Content-Type': 'application/json', 'X-Netbird-Zoraxy-Token': csrf};
+  if (hostCSRF) headers['X-CSRF-Token'] = hostCSRF;
+  const response = await fetch('api/' + path, {method: body === undefined ? 'GET' : 'POST', headers, ...(body === undefined ? {} : {body: JSON.stringify(body)})});
+  let data;
+  try { data = await response.json(); } catch { throw new Error('Zoraxy answered HTTP ' + response.status + '. Reload this page and sign in again.'); }
+  if (!response.ok) {
+    if (data.time) showResult(data);
+    throw new Error(data.error || 'Request failed');
+  }
+  return data;
+}
+
+// Saved IDs stay listed when the catalog lacks them, so a choice is never dropped silently.
+function known(entries, saved) {
+  const missing = saved.filter(id => id && !entries.some(entry => entry.id === id));
+  return [...entries, ...missing.map(id => ({id, name: id}))];
+}
+
+function fillSelect(id, entries, saved, emptyLabel) {
+  const options = [{id: '', name: emptyLabel}, ...known(entries, [saved])].map(entry => {
+    const option = document.createElement('option');
+    option.value = entry.id;
+    option.textContent = entry.name + (entry.domain ? ' (' + entry.domain + ')' : '');
+    return option;
+  });
+  $(id).replaceChildren(...options);
+  $(id).value = saved;
+}
+
+function fillGroups(entries, saved) {
+  $('group_ids').replaceChildren(...known(entries, saved).map(entry => {
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.value = entry.id;
+    box.checked = saved.includes(entry.id);
+    const label = document.createElement('label');
+    label.append(box, entry.name);
+    return label;
+  }));
+  if (!$('group_ids').children.length) $('group_ids').textContent = 'Load the choices above to select groups.';
+}
+
+function fillChoices(networks, groups, zones, c) {
+  fillSelect('network_id', networks, c.network_id, 'Select a Network');
+  fillGroups(groups, c.group_ids);
+  fillSelect('dns_zone_id', zones, c.dns_zone_id, 'None — keep your existing DNS');
+}
+
+async function loadChoices() {
+  const c = settings();
+  const choices = await api('catalog', c);
+  fillChoices(choices.networks || [], choices.groups || [], choices.zones || [], c);
+  message(choices.dns_note || 'Choices loaded.');
+}
+
+function showResult(result) {
+  if (!result) return;
+  const changes = result.changes || [];
+  $('result_mode').textContent = result.dry_run ? 'Dry run' : 'Live sync';
+  $('summary').textContent = new Date(result.time).toLocaleString() + ' · ' + (result.domains || []).length + ' hostname(s) · ' + changes.length + ' planned change(s) · ' + result.applied + ' applied';
+  $('sync_error').textContent = result.error || '';
+  const rows = changes.map(change => [change.verb, change.kind === 'dns' ? 'Private DNS' : 'Network resource', change.domain]);
+  $('changes').replaceChildren(...rows.map(values => {
+    const row = document.createElement('tr');
+    values.forEach(value => { const cell = document.createElement('td'); cell.textContent = value; row.append(cell); });
+    return row;
+  }));
+  if (!changes.length) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 3;
+    cell.textContent = result.error ? 'Sync stopped before applying changes.' : 'Everything is up to date.';
+    row.append(cell);
+    $('changes').append(row);
+  }
+  $('details').textContent = JSON.stringify(result, null, 2);
+}
+
+function showToken(stored) {
+  $('token').placeholder = stored ? 'Token loaded — leave blank to keep' : 'nbp_…';
+  $('token_note').textContent = stored ? 'A token is loaded. Leave blank to keep it, or enter a replacement.' : noToken;
+}
+
+function showMode() {
+  $('mode_note').textContent = modeNotes[$('mode').value];
+  const continuous = $('mode').value === 'continuous';
+  $('interval').hidden = !continuous;
+  $('storage').hidden = !continuous;
+  $('storage_note').textContent = storageNotes[$('token_storage').value];
+}
+
+async function action(fn) {
+  if (busy) return;
+  busy = true;
+  document.querySelectorAll('button').forEach(b => b.disabled = true);
+  try { await fn(); } catch (e) { message(e.message, true); }
+  finally { busy = false; document.querySelectorAll('button').forEach(b => b.disabled = false); }
+}
+
+$('settings').addEventListener('input', () => { dirty = true; });
+$('mode').addEventListener('change', showMode);
+$('token_storage').addEventListener('change', showMode);
+showMode();
+$('save').addEventListener('click', () => action(async () => {
+  const saved = await api('config', settings());
+  $('token').value = '';
+  showToken(saved.has_token);
+  $('paused').hidden = true;
+  dirty = false;
+  message('Settings saved.');
+}));
+$('catalog').addEventListener('click', () => action(loadChoices));
+for (const name of ['preview', 'sync']) {
+  $(name).addEventListener('click', () => action(async () => {
+    if (dirty) throw new Error('Save your settings before previewing or syncing.');
+    message(name === 'preview' ? 'Checking tagged routes…' : 'Synchronizing tagged routes…');
+    const result = await api(name, {});
+    showResult(result);
+    if (result.token_deleted) showToken(false);
+    message(result.dry_run ? 'Preview complete. No changes were written.' : result.token_deleted ? 'Sync complete. The token was removed from this plugin. Revoke it in NetBird if you no longer need it.' : 'Sync complete.');
+  }));
+}
+action(async () => {
+  const state = await api('status');
+  fields.forEach(id => { const el = $(id); if (el.type === 'checkbox') el.checked = state.config[id]; else el.value = state.config[id] ?? ''; });
+  showMode();
+  fillChoices([], [], [], state.config);
+  showResult(state.last);
+  showToken(state.has_token);
+  $('paused').hidden = !state.paused;
+  if (state.has_token) await loadChoices();
+});
+setInterval(async () => {
+  if (busy) return;
+  try {
+    const state = await api('status');
+    showResult(state.last);
+    $('paused').hidden = !state.paused;
+  } catch {}
+}, 10000);
+</script></body></html>
