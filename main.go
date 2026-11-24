@@ -37,8 +37,12 @@ func introspection() any {
 	return map[string]any{
 		"id": pluginID, "name": "NetBird Route Sync", "author": "Denis Maier",
 		"author_contact": "https://github.com/denMaier", "url": "https://github.com/denMaier/netbird-zoraxy-plugin",
-		"description": "Publish tagged Zoraxy hostnames to NetBird Networks and private DNS.",
-		"type":        1, "version_major": 0, "version_minor": 1, "version_patch": 0, "ui_path": "/ui",
+		"description":   "Publish tagged Zoraxy hostnames to NetBird Networks and private DNS.",
+		"type":          1,
+		"version_major": 0, // x-release-please-major
+		"version_minor": 1, // x-release-please-minor
+		"version_patch": 0, // x-release-please-patch
+		"ui_path":       "/ui",
 		"permitted_api_endpoints": []map[string]string{{
 			"method": "GET", "endpoint": "/plugin/api/proxy/list",
 			"reason": "Read tagged reverse-proxy routes and aliases to synchronize NetBird resources.",
