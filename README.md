@@ -133,7 +133,7 @@ There are no Go dependencies or frontend build steps.
 
 The settings page runs in a Zoraxy iframe that blocks forms and dialogs, so it only uses plain buttons.
 
-To release, bump the version in `main.go` and push a `vX.Y.Z` tag. CI tests, builds and publishes the binaries.
+Releases are automatic; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 References: [Zoraxy plugin protocol](https://github.com/tobychui/zoraxy/blob/main/src/mod/plugins/zoraxy_plugin/zoraxy_plugin.go), [NetBird API](https://github.com/netbirdio/netbird/blob/main/shared/management/http/api/openapi.yml), [Networks](https://docs.netbird.io/manage/networks), [private DNS zones](https://docs.netbird.io/manage/dns/custom-zones).
 
