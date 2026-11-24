@@ -41,7 +41,7 @@ func introspection() any {
 		"type":          1,
 		"version_major": 0, // x-release-please-major
 		"version_minor": 1, // x-release-please-minor
-		"version_patch": 0, // x-release-please-patch
+		"version_patch": 1, // x-release-please-patch
 		"ui_path":       "/ui",
 		"permitted_api_endpoints": []map[string]string{{
 			"method": "GET", "endpoint": "/plugin/api/proxy/list",
